@@ -33,6 +33,26 @@ $this->params['breadcrumbs'][] = $this->title;
             'docs:ntext',
             'images:ntext',
             'ref',
+            [
+                'label' => Yii::t('app', 'Images'),
+                'format' => 'raw',
+                'value' => function ($model) {
+                    return dosamigos\gallery\Gallery::widget(['items' => $model->getThumbnails($model->ref)]);
+                },
+            ],
+            [
+                'label' => Yii::t('app', 'Docs'),
+                'format' => 'raw',
+                'value' => function ($model) {
+                    return $model->getImageCover($model->ref);
+                },
+            ],
+
+            [
+                'attribute' => 'docs',
+                'format' => 'html',
+                'value' => $model->listDownloadFiles('docs')
+            ],
         ],
     ]) ?>
 

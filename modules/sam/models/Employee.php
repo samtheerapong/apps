@@ -4,6 +4,7 @@ namespace app\modules\sam\models;
 
 use Yii;
 use yii\helpers\Html;
+use yii\helpers\Json;
 use yii\helpers\Url;
 
 /**
@@ -62,35 +63,51 @@ class Employee extends \yii\db\ActiveRecord
         return Url::base(true) . '/' . self::UPLOAD_FOLDER . '/';
     }
 
+    public function getThumbnails($ref)
+    {
+        $uploadFiles = Uploads::find()->where(['ref' => $ref])->all();
+        $preview = [];
+        foreach ($uploadFiles as $file) {
+            $preview[] = [
+                'url' => self::getUploadUrl(true) . $ref . '/' . $file->real_filename,
+                'src' => self::getUploadUrl(true) . $ref . '/thumbnail/' . $file->real_filename,
+                'options' => [
+                    'title' => $ref,
+                    // 'style' => 'width: 300px; height: 300px;', // Adjust as needed
+                ],
+            ];
+        }
+        return $preview;
+    }
+
+    
 
 
+    public function getImageCover($ref)
+    {
+        $uploadFiles = Uploads::find()->where(['ref' => $ref])->all();
+        $thumbnails = [];
 
+        foreach ($uploadFiles as $file) {
+            $thumbnails[] = [
+                'url' => self::getUploadUrl(true) . $ref . '/' . $file->real_filename,
+                'src' => self::getUploadUrl(true) . $ref . '/thumbnail/' . $file->real_filename,
+                'options' => [
+                    'title' => $file->ref,
+                ],
+            ];
+        }
 
-    // public function getImageView($ref)
-    // {
-    //     $uploadFiles = Uploads::find()->where(['ref' => $ref])->all();
-    //     $thumbnails = [];
+        if (!empty($thumbnails)) {
+            $thumbnailSrc = $thumbnails[0]['src'];
+        } else {
+            $thumbnailSrc = Yii::getAlias('@web') . '/uploads/no-image.jpg';
+        }
 
-    //     foreach ($uploadFiles as $file) {
-    //         $thumbnails[] = [
-    //             'url' => self::getUploadImageUrl(true) . $ref . '/' . $file->real_filename,
-    //             'src' => self::getUploadImageUrl(true) . $ref . '/thumbnail/' . $file->real_filename,
-    //             'options' => [
-    //                 'title' => $file->real_filename,
-    //             ],
-    //         ];
-    //     }
+        return Html::a(Html::img($thumbnailSrc, ['height' => '80px', 'class' => 'img-rounded']), ['view', 'id' => $this->id]);
 
-    //     if (!empty($thumbnails)) {
-    //         $thumbnailSrc = $thumbnails[0]['src'];
-    //     } else {
-    //         $thumbnailSrc = Yii::getAlias('@web') . '/uploads/no-image.jpg';
-    //     }
-
-    //     return Html::a(Html::img($thumbnailSrc, ['height' => '80px', 'class' => 'img-rounded']), ['view', 'id' => $this->id]);
-
-    //     // เรียกใช้งาน echo $model->getImageView($model->ref);
-    // }
+        // เรียกใช้งาน echo $model->getImageView($model->ref);
+    }
     // End uploading img
 
 

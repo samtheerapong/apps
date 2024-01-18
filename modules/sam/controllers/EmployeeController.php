@@ -12,6 +12,7 @@ use yii\web\NotFoundHttpException;
 use yii\filters\VerbFilter;
 use yii\helpers\ArrayHelper;
 use yii\helpers\BaseFileHelper;
+use yii\helpers\Html;
 use yii\helpers\Json;
 use yii\helpers\Url;
 use yii\web\UploadedFile;
@@ -76,21 +77,18 @@ class EmployeeController extends Controller
     public function actionCreate()
     {
         $model = new Employee();
-        $model->ref = substr(Yii::$app->getSecurity()->generateRandomString(), 10);
+
 
         if ($this->request->isPost) {
             if ($model->load($this->request->post())) {
 
-                $this->CreateDir($model->ref);
-                $model->docs = $this->uploadMultipleFile($model);
+                $this->Uploads(false);
 
-                if ($model->save()) {
-
-                    return $this->redirect(['view', 'id' => $model->id]);
-                }
+                $model->save();
+                return $this->redirect(['view', 'id' => $model->id]);
             }
         } else {
-            $model->loadDefaultValues();
+            $model->ref = substr(Yii::$app->getSecurity()->generateRandomString(), 10);
         }
 
         return $this->render('create', [
@@ -108,13 +106,21 @@ class EmployeeController extends Controller
     public function actionUpdate($id)
     {
         $model = $this->findModel($id);
+        list($initialPreview, $initialPreviewConfig) = $this->getInitialPreview($model->ref);
 
-        if ($this->request->isPost && $model->load($this->request->post()) && $model->save()) {
-            return $this->redirect(['view', 'id' => $model->id]);
+        if ($this->request->isPost && $model->load($this->request->post())) {
+
+            $this->Uploads(false);
+
+            if ($model->save()) {
+                return $this->redirect(['view', 'id' => $model->id]);
+            }
         }
 
         return $this->render('update', [
             'model' => $model,
+            'initialPreview' => $initialPreview,
+            'initialPreviewConfig' => $initialPreviewConfig
         ]);
     }
 
@@ -127,10 +133,15 @@ class EmployeeController extends Controller
      */
     public function actionDelete($id)
     {
-        $this->findModel($id)->delete();
+        $model = $this->findModel($id);
+        $this->removeUploadDir($model->ref);
+        Uploads::deleteAll(['ref' => $model->ref]);
+
+        $model->delete();
 
         return $this->redirect(['index']);
     }
+
 
     /**
      * Finds the Employee model based on its primary key value.
@@ -148,33 +159,12 @@ class EmployeeController extends Controller
         throw new NotFoundHttpException(Yii::t('app', 'The requested page does not exist.'));
     }
 
-    //
+    // Uploads
+    public function actionUploadAjax()
+    {
+        $this->Uploads(true);
+    }
 
-     /***************** upload MultipleFile ******************/
-     private function uploadMultipleFile($model, $tempFile = null)
-     {
-         $files = [];
-         $json = '';
-         $tempFile = Json::decode($tempFile);
-         $UploadedFiles = UploadedFile::getInstances($model, 'docs');
-         if ($UploadedFiles !== null) {
-             foreach ($UploadedFiles as $file) {
-                 try {
-                     $oldFileName = $file->basename . '.' . $file->extension;
-                     $newFileName = md5($file->basename . time()) . '.' . $file->extension;
-                     $file->saveAs(Employee::UPLOAD_FOLDER . '/' . $model->ref . '/' . $newFileName);
-                     $files[$newFileName] = $oldFileName;
-                 } catch (Exception $e) {
-                 }
-             }
-             $json = json::encode(ArrayHelper::merge($tempFile, $files));
-         } else {
-             $json = $tempFile;
-         }
-         return $json;
-     }
-
-     /***************** Create Dir ******************/
     private function CreateDir($folderName)
     {
         if ($folderName != NULL) {
@@ -184,5 +174,118 @@ class EmployeeController extends Controller
             }
         }
         return;
+    }
+
+    private function Uploads($isAjax = false)
+    {
+        if (Yii::$app->request->isPost) {
+            $uploadAjax = UploadedFile::getInstancesByName('upload_ajax');
+            if ($uploadAjax) {
+                if ($isAjax === true) {
+                    $ref = Yii::$app->request->post('ref');
+                } else {
+                    $ReqPost = Yii::$app->request->post('Employee');
+                    $ref = $ReqPost['ref'];
+                }
+
+                $this->CreateDir($ref);
+
+                foreach ($uploadAjax as $file) {
+                    $fileName       = $file->baseName . '.' . $file->extension;
+                    $realFileName   = md5($file->baseName . time()) . '.' . $file->extension;
+                    $savePath       = Employee::UPLOAD_FOLDER . '/' . $ref . '/' . $realFileName;
+                    if ($file->saveAs($savePath)) {
+
+                        if ($this->isImage(Url::base(true) . '/' . $savePath)) {
+                            $this->createThumbnail($ref, $realFileName);
+                        }
+
+                        $model                  = new Uploads();
+                        $model->ref             = $ref;
+                        $model->file_name       = $fileName;
+                        $model->real_filename   = $realFileName;
+                        $model->save();
+
+                        if ($isAjax === true) {
+                            echo json_encode(['success' => 'true']);
+                        }
+                    } else {
+                        if ($isAjax === true) {
+                            echo json_encode(['success' => 'false', 'eror' => $file->error]);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    private function getInitialPreview($ref)
+    {
+        $datas = Uploads::find()->where(['ref' => $ref])->all();
+        $initialPreview = [];
+        $initialPreviewConfig = [];
+        foreach ($datas as $key => $value) {
+            array_push($initialPreview, $this->getTemplatePreview($value));
+            array_push($initialPreviewConfig, [
+                'caption' => $value->file_name,
+                'width'  => '120px',
+                'url'    => Url::to(['/sam/employee/deletefile-ajax']),
+                'key'    => $value->upload_id
+            ]);
+        }
+        return  [$initialPreview, $initialPreviewConfig];
+    }
+
+    
+
+    public function isImage($filePath)
+    {
+        return @is_array(getimagesize($filePath)) ? true : false;
+    }
+
+    private function getTemplatePreview(Uploads $model)
+    {
+        $filePath = Employee::getUploadUrl() . $model->ref . '/thumbnail/' . $model->real_filename;
+        $isImage  = $this->isImage($filePath);
+        if ($isImage) {
+            $file = Html::img($filePath, ['class' => 'file-preview-image', 'alt' => $model->file_name, 'title' => $model->file_name]);
+        } else {
+            $file =     "<div class='file-preview-other'> " .
+                        "<h2><i class='glyphicon glyphicon-file'></i></h2>" .
+                        "</div>";
+        }
+        return $file;
+    }
+
+    public function createThumbnail($folderName, $fileName, $width = 300, $quality = 80)
+    {
+        $uploadPath = Employee::getUploadPath() . '/' . $folderName . '/';
+        $file = $uploadPath . $fileName;
+
+        $image = Yii::$app->image->load($file);
+        $image->resize($width);
+
+        $thumbnailPath = $uploadPath . 'thumbnail/' . $fileName;
+        $image->save($thumbnailPath, ['quality' => $quality]);
+
+        return;
+    }
+
+    public function actionDeletefileAjax()
+    {
+        $model = Uploads::findOne(Yii::$app->request->post('key'));
+        if ($model !== NULL) {
+            $filename  = Employee::getUploadPath() . $model->ref . '/' . $model->real_filename;
+            $thumbnail = Employee::getUploadPath() . $model->ref . '/thumbnail/' . $model->real_filename;
+            if ($model->delete()) {
+                @unlink($filename);
+                @unlink($thumbnail);
+                echo json_encode(['success' => true]);
+            } else {
+                echo json_encode(['success' => false]);
+            }
+        } else {
+            echo json_encode(['success' => false]);
+        }
     }
 }

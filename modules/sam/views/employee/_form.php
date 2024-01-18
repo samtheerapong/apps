@@ -12,32 +12,41 @@ use yii\widgets\ActiveForm;
 
 <div class="employee-form">
 
-    <?php $form = ActiveForm::begin(); ?>
+<?php $form = ActiveForm::begin(['options' => ['enctype' => 'multipart/form-data']]) ?>
 
 
-    <div class="form-group field-upload_files">
-        <label class="control-label" for="docs[]"> ภาพถ่าย </label>
-        <div>
-            <?= FileInput::widget([
-                'name' => 'docs[]',
-                'options' => ['multiple' => true, 'accept' => 'image/*'], //'accept' => 'image/*' หากต้องเฉพาะ image
-                'pluginOptions' => [
-                    'overwriteInitial' => false,
-                    'initialPreviewShowDelete' => true,
-                    // 'initialPreview' => $initialPreview,
-                    // 'initialPreviewConfig' => $initialPreviewConfig,
-                    // 'uploadUrl' => Url::to(['upload-img']),
-                    'uploadExtraData' => [
-                        'ref' => $model->ref,
-                    ],
-                    'maxFileCount' => 10
-                ]
-            ]);
-            ?>
+    <div class="col-md-12">
+        <div class="form-group field-upload_files">
+            <label class="control-label" for="upload_files[]"> <?= Yii::t('app', 'Images') ?> </label>
+            <div>
+                <?= FileInput::widget([
+                    'name' => 'upload_ajax[]',
+                    'language' => Yii::$app->language == 'th-TH' ? 'th' : 'en',
+                    'options' => ['multiple' => true], //'accept' => 'image/*' หากต้องเฉพาะ image
+                    'pluginOptions' => [
+                        'initialPreview' => $initialPreview,
+                        'initialPreviewConfig' => $initialPreviewConfig,
+                        'previewFileType' => 'any',
+                        'uploadUrl' => Url::to(['/sam/employee/upload-ajax']),
+                        'showCancel' => false,
+                        'showRemove' => false,
+                        'showUpload' => false,
+                        // 'browseIcon' => '<i class="fas fa-folder"></i> ',
+                        // 'browseLabel' =>   Yii::t('app', 'Select...'),
+                        'overwriteInitial' => false,
+                        'initialPreviewShowDelete' => true,
+                        'uploadExtraData' => [
+                            'ref' => $model->ref,
+                        ],
+                        'maxFileCount' => 10,
+                    ]
+                ]);
+                ?>
+            </div>
         </div>
     </div>
 
-    <?= $form->field($model, 'ref')->textInput(['maxlength' => true]) ?>
+    <?= $form->field($model, 'ref')->hiddenInput()->label(false) ?>
 
     <div class="form-group">
         <?= Html::submitButton(Yii::t('app', 'Save'), ['class' => 'btn btn-success']) ?>
